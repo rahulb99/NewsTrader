@@ -112,22 +112,57 @@ class OpenAILLMPolicy:
             elif normalized in ("false", "0", "no"):
                 tradeable = False
             else:
-                tradeable = False
-        else:
-            tradeable = False
-        reason = str(payload.get("reason", "llm_unknown"))
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            # Malformed JSON from LLM – fall back to a safe no-trade decision.
+            return Decision(tradeable=False, reason="llm_invalid_json", signal=None)
+
+        tradeable = bool(payload.get("tradeable", False))
+        reason_value = payload.get("reason", "llm_unknown")
+        reason = str(reason_value) if reason_value is not None else "llm_unknown"
 
         if not tradeable:
             return Decision(tradeable=False, reason=reason, signal=None)
 
+        # When tradeable is True, ensure all required fields are present and valid.
+        try:
+            side_raw = payload["side"]
+            size_raw = payload["size"]
+            tp_raw = payload["take_profit_pips"]
+            sl_raw = payload["stop_loss_pips"]
+            impact_raw = payload["news_impact"]
+            confidence_raw = payload["confidence"]
+
+            if (
+                side_raw is None
+                or size_raw is None
+                or tp_raw is None
+                or sl_raw is None
+                or impact_raw is None
+                or confidence_raw is None
+            ):
+                # Missing required values despite tradeable=True – no trade.
+                return Decision(tradeable=False, reason="llm_missing_fields", signal=None)
+
+            side = str(side_raw)
+            news_impact = str(impact_raw)
+            size = float(size_raw)
+            take_profit_pips = int(tp_raw)
+            stop_loss_pips = int(sl_raw)
+            confidence = max(0.0, min(1.0, float(confidence_raw)))
+        except (KeyError, TypeError, ValueError):
+            # Any missing key or invalid type/value should result in a safe no-trade decision.
+            return Decision(tradeable=False, reason="llm_invalid_fields", signal=None)
+
         signal = TradeSignal(
             instrument="XAUUSD",
-            side=str(payload["side"]),
-            size=float(payload["size"]),
-            take_profit_pips=int(payload["take_profit_pips"]),
-            stop_loss_pips=int(payload["stop_loss_pips"]),
-            news_impact=str(payload["news_impact"]),
-            confidence=max(0.0, min(1.0, float(payload["confidence"]))),
+            side=side,
+            size=size,
+            take_profit_pips=take_profit_pips,
+            stop_loss_pips=stop_loss_pips,
+            news_impact=news_impact,
+            confidence=confidence,
             reason=f"llm_policy:{event.source}:{event.headline[:80]}",
         )
         return Decision(tradeable=True, reason=reason, signal=signal)
