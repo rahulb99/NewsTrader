@@ -9,14 +9,14 @@ from .dedup import ExactDedupCache
 from .executor import ExecutionAdapter
 from .models import HeadlineEvent
 from .risk import RiskEngine
-from .signal import RuleBasedXAUUSDPolicy
+from .signal import SignalPolicy
 
 
 class NewsTradingPipeline:
     def __init__(
         self,
         dedup: ExactDedupCache,
-        policy: RuleBasedXAUUSDPolicy,
+        policy: SignalPolicy,
         risk: RiskEngine,
         executor: ExecutionAdapter,
         audit: JsonlAuditLogger,

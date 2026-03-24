@@ -8,10 +8,11 @@ from .config import load_app_config
 from .dedup import ExactDedupCache
 from .executor import DryRunExecutor
 from .ingestion import AsyncStaticListConnector, StaticListConnector
+from .llm_policy import OpenAILLMPolicy
 from .pipeline import NewsTradingPipeline
 from .risk import RiskEngine
 from .service import ProductionRunner
-from .signal import RuleBasedXAUUSDPolicy
+from .signal import RuleBasedXAUUSDPolicy, SignalPolicy
 
 
 SAMPLE_HEADLINES = [
