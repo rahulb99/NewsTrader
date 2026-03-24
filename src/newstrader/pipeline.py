@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import asdict
+from urllib.parse import urlparse
 
 from .audit import JsonlAuditLogger
 from .dedup import ExactDedupCache
@@ -19,12 +20,29 @@ class NewsTradingPipeline:
         risk: RiskEngine,
         executor: ExecutionAdapter,
         audit: JsonlAuditLogger,
+        allowed_domains: set[str] | None = None,
     ):
         self.dedup = dedup
         self.policy = policy
         self.risk = risk
         self.executor = executor
         self.audit = audit
+        self.allowed_domains = {d.lower() for d in (allowed_domains or set())}
+
+    def _is_domain_allowed(self, event: HeadlineEvent) -> bool:
+        if not self.allowed_domains:
+            return True
+
+        if not event.url:
+            return True
+
+        parsed = urlparse(event.url)
+        host = parsed.netloc.lower()
+        if host.startswith("www."):
+            host = host[4:]
+        if ":" in host:
+            host = host.split(":", 1)[0]
+        return host in self.allowed_domains
 
 
 
@@ -36,6 +54,15 @@ class NewsTradingPipeline:
         return results
 
     def process(self, event: HeadlineEvent, *, open_positions: int, spread_points: int) -> dict:
+        if not self._is_domain_allowed(event):
+            record = {
+                "event": asdict(event),
+                "status": "dropped",
+                "reason": "source_domain_not_allowed",
+            }
+            self.audit.log(record)
+            return record
+
         dedup = self.dedup.check_and_add(event)
         if not dedup.accepted:
             record = {
