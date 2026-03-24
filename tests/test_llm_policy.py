@@ -69,3 +69,66 @@ def test_llm_policy_no_trade_payload_maps_to_no_trade():
     assert decision.tradeable is False
     assert decision.signal is None
     assert decision.reason == "ambiguous_direction"
+
+
+def test_llm_policy_invalid_json_returns_parse_error():
+    policy = OpenAILLMPolicy(
+        api_key="test",
+        client=_FakeClient("not valid json {{{"),
+    )
+
+    event = HeadlineEvent(
+        source="unit",
+        headline="Some headline",
+        timestamp_source=datetime.now(timezone.utc),
+    )
+
+    decision = policy.evaluate(event)
+
+    assert decision.tradeable is False
+    assert decision.signal is None
+    assert decision.reason == "llm_parse_error"
+
+
+def test_llm_policy_missing_fields_returns_invalid_payload():
+    # tradeable=true but required fields are missing
+    policy = OpenAILLMPolicy(
+        api_key="test",
+        client=_FakeClient('{"tradeable": true, "reason": "bullish", "confidence": 0.9}'),
+    )
+
+    event = HeadlineEvent(
+        source="unit",
+        headline="Gold surges on Fed pivot",
+        timestamp_source=datetime.now(timezone.utc),
+    )
+
+    decision = policy.evaluate(event)
+
+    assert decision.tradeable is False
+    assert decision.signal is None
+    assert decision.reason == "llm_invalid_payload"
+
+
+def test_llm_policy_null_fields_when_tradeable_returns_invalid_payload():
+    # tradeable=true but required fields are null (TypeError on float(None))
+    policy = OpenAILLMPolicy(
+        api_key="test",
+        client=_FakeClient(
+            '{"tradeable": true, "reason": "bullish", "side": "BUY", '
+            '"news_impact": "high", "confidence": 0.85, "size": null, '
+            '"take_profit_pips": null, "stop_loss_pips": null}'
+        ),
+    )
+
+    event = HeadlineEvent(
+        source="unit",
+        headline="Gold surges on Fed pivot",
+        timestamp_source=datetime.now(timezone.utc),
+    )
+
+    decision = policy.evaluate(event)
+
+    assert decision.tradeable is False
+    assert decision.signal is None
+    assert decision.reason == "llm_invalid_payload"

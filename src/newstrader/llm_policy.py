@@ -89,7 +89,10 @@ class OpenAILLMPolicy:
         )
 
         raw = self._extract_response_text(response)
-        payload = json.loads(raw)
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return Decision(tradeable=False, reason="llm_parse_error", signal=None)
 
         tradeable = bool(payload.get("tradeable", False))
         reason = str(payload.get("reason", "llm_unknown"))
@@ -97,14 +100,17 @@ class OpenAILLMPolicy:
         if not tradeable:
             return Decision(tradeable=False, reason=reason, signal=None)
 
-        signal = TradeSignal(
-            instrument="XAUUSD",
-            side=str(payload["side"]),
-            size=float(payload["size"]),
-            take_profit_pips=int(payload["take_profit_pips"]),
-            stop_loss_pips=int(payload["stop_loss_pips"]),
-            news_impact=str(payload["news_impact"]),
-            confidence=max(0.0, min(1.0, float(payload["confidence"]))),
-            reason=f"llm_policy:{event.source}:{event.headline[:80]}",
-        )
+        try:
+            signal = TradeSignal(
+                instrument="XAUUSD",
+                side=str(payload["side"]),
+                size=float(payload["size"]),
+                take_profit_pips=int(payload["take_profit_pips"]),
+                stop_loss_pips=int(payload["stop_loss_pips"]),
+                news_impact=str(payload["news_impact"]),
+                confidence=max(0.0, min(1.0, float(payload["confidence"]))),
+                reason=f"llm_policy:{event.source}:{event.headline[:80]}",
+            )
+        except (KeyError, TypeError, ValueError):
+            return Decision(tradeable=False, reason="llm_invalid_payload", signal=None)
         return Decision(tradeable=True, reason=reason, signal=signal)
