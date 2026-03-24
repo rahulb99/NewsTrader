@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from dotenv import load_dotenv
+
 
 def _env_int(key: str, default: int) -> int:
     value = os.getenv(key)
@@ -43,4 +45,23 @@ class RuntimeConfig:
             queue_size=_env_int("NEWSTRADER_QUEUE_SIZE", 1000),
             processing_timeout_ms=_env_int("NEWSTRADER_PROCESSING_TIMEOUT_MS", 250),
             min_confidence=_env_float("NEWSTRADER_MIN_CONFIDENCE", 0.60),
+        )
+
+
+@dataclass(slots=True)
+class LLMConfig:
+    enabled: bool = False
+    api_key: str | None = None
+    model: str = "gpt-4.1-mini"
+    temperature: float = 0.0
+
+    @classmethod
+    def from_env(cls) -> "LLMConfig":
+        load_dotenv()
+        enabled = os.getenv("NEWSTRADER_SIGNAL_POLICY", "rule").lower() == "llm"
+        return cls(
+            enabled=enabled,
+            api_key=os.getenv("OPENAI_API_KEY"),
+            model=os.getenv("NEWSTRADER_OPENAI_MODEL", "gpt-4.1-mini"),
+            temperature=_env_float("NEWSTRADER_OPENAI_TEMPERATURE", 0.0),
         )

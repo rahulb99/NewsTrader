@@ -4,13 +4,15 @@ import asyncio
 from pprint import pprint
 
 from .audit import JsonlAuditLogger
+from .config import LLMConfig
 from .dedup import ExactDedupCache
 from .executor import DryRunExecutor
 from .ingestion import AsyncStaticListConnector, StaticListConnector
+from .llm_policy import OpenAILLMPolicy
 from .pipeline import NewsTradingPipeline
 from .risk import RiskEngine
 from .service import ProductionRunner
-from .signal import RuleBasedXAUUSDPolicy
+from .signal import RuleBasedXAUUSDPolicy, SignalPolicy
 
 
 SAMPLE_HEADLINES = [
@@ -23,9 +25,20 @@ SAMPLE_HEADLINES = [
 
 
 def _build_pipeline() -> NewsTradingPipeline:
+    llm_config = LLMConfig.from_env()
+    policy: SignalPolicy = RuleBasedXAUUSDPolicy()
+    if llm_config.enabled:
+        if not llm_config.api_key:
+            raise ValueError("OPENAI_API_KEY is required when NEWSTRADER_SIGNAL_POLICY=llm")
+        policy = OpenAILLMPolicy(
+            api_key=llm_config.api_key,
+            model=llm_config.model,
+            temperature=llm_config.temperature,
+        )
+
     return NewsTradingPipeline(
         dedup=ExactDedupCache(ttl_minutes=120),
-        policy=RuleBasedXAUUSDPolicy(),
+        policy=policy,
         risk=RiskEngine(max_open_positions=1, cooldown_minutes=10, max_spread_points=45),
         executor=DryRunExecutor(),
         audit=JsonlAuditLogger("audit.jsonl"),
