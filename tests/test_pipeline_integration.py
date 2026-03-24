@@ -77,15 +77,21 @@ def test_pipeline_marks_rejected_and_writes_audit_record(tmp_path):
 
 
 def test_pipeline_marks_failed_when_executor_raises(tmp_path):
+    audit_path = tmp_path / "audit.jsonl"
     pipeline = NewsTradingPipeline(
         dedup=ExactDedupCache(ttl_minutes=120),
         policy=_FixedDecisionPolicy(Decision(tradeable=True, reason="ok", signal=_build_signal())),
         risk=RiskEngine(max_open_positions=1, cooldown_minutes=0, max_spread_points=50),
         executor=_FailingExecutor(),
-        audit=JsonlAuditLogger(str(tmp_path / "audit.jsonl")),
+        audit=JsonlAuditLogger(str(audit_path)),
     )
 
     result = pipeline.process(_build_event(), open_positions=0, spread_points=10)
 
     assert result["status"] == "failed"
     assert result["reason"] == "network_down"
+
+    records = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()]
+    assert len(records) == 1
+    assert records[0]["status"] == "failed"
+    assert records[0]["reason"] == "network_down"
