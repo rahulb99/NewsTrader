@@ -67,13 +67,39 @@ class NewsTradingPipeline:
             self.audit.log(record)
             return record
 
-        result = self.executor.send(decision.signal)
-        record = {
-            "event": asdict(event),
-            "signal": asdict(decision.signal),
-            "execution": asdict(result),
-            "status": "sent",
-            "reason": "ok",
-        }
+        try:
+            result = self.executor.send(decision.signal)
+        except Exception as exc:
+            record = {
+                "event": asdict(event),
+                "signal": asdict(decision.signal),
+                "status": "failed",
+                "reason": str(exc),
+            }
+            self.audit.log(record)
+            return record
+
+        accepted = getattr(result, "accepted", True)
+        if accepted:
+            record = {
+                "event": asdict(event),
+                "signal": asdict(decision.signal),
+                "execution": asdict(result),
+                "status": "sent",
+                "reason": "ok",
+            }
+        else:
+            rejection_reason = getattr(result, "reason", None)
+            if rejection_reason is None and hasattr(result, "retcode"):
+                rejection_reason = str(getattr(result, "retcode"))
+            if rejection_reason is None:
+                rejection_reason = "rejected"
+            record = {
+                "event": asdict(event),
+                "signal": asdict(decision.signal),
+                "execution": asdict(result),
+                "status": "rejected",
+                "reason": rejection_reason,
+            }
         self.audit.log(record)
         return record
