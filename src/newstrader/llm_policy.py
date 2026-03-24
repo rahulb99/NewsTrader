@@ -91,7 +91,19 @@ class OpenAILLMPolicy:
         raw = self._extract_response_text(response)
         payload = json.loads(raw)
 
-        tradeable = bool(payload.get("tradeable", False))
+        tradeable_raw = payload.get("tradeable", False)
+        if isinstance(tradeable_raw, bool):
+            tradeable = tradeable_raw
+        elif isinstance(tradeable_raw, str):
+            normalized = tradeable_raw.strip().lower()
+            if normalized in ("true", "1", "yes"):
+                tradeable = True
+            elif normalized in ("false", "0", "no"):
+                tradeable = False
+            else:
+                tradeable = False
+        else:
+            tradeable = False
         reason = str(payload.get("reason", "llm_unknown"))
 
         if not tradeable:
