@@ -25,5 +25,7 @@ class JsonlAuditLogger:
 
     def log(self, record: dict[str, Any]) -> None:
         line = json.dumps(_to_jsonable(record), ensure_ascii=False)
+        # Ensure the parent directory exists before appending to the file
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as f:
             f.write(line + "\n")
