@@ -4,7 +4,7 @@ import asyncio
 from pprint import pprint
 
 from .audit import JsonlAuditLogger
-from .config import LLMConfig
+from .config import load_app_config
 from .dedup import ExactDedupCache
 from .executor import DryRunExecutor
 from .ingestion import AsyncStaticListConnector, StaticListConnector
@@ -25,40 +25,45 @@ SAMPLE_HEADLINES = [
 
 
 def _build_pipeline() -> NewsTradingPipeline:
-    llm_config = LLMConfig.from_env()
-    policy: SignalPolicy = RuleBasedXAUUSDPolicy()
-    if llm_config.enabled:
-        if not llm_config.api_key:
-            raise ValueError("OPENAI_API_KEY is required when NEWSTRADER_SIGNAL_POLICY=llm")
-        policy = OpenAILLMPolicy(
-            api_key=llm_config.api_key,
-            model=llm_config.model,
-            temperature=llm_config.temperature,
-        )
-
+    app_config = load_app_config()
     return NewsTradingPipeline(
-        dedup=ExactDedupCache(ttl_minutes=120),
-        policy=policy,
-        risk=RiskEngine(max_open_positions=1, cooldown_minutes=10, max_spread_points=45),
+        dedup=ExactDedupCache(ttl_minutes=app_config.pipeline.dedup_ttl_minutes),
+        policy=RuleBasedXAUUSDPolicy(),
+        risk=RiskEngine(
+            max_open_positions=app_config.pipeline.max_open_positions,
+            cooldown_minutes=app_config.pipeline.cooldown_minutes,
+            max_spread_points=app_config.pipeline.max_spread_points,
+        ),
         executor=DryRunExecutor(),
         audit=JsonlAuditLogger("audit.jsonl"),
+        allowed_domains=app_config.pipeline.allowed_domains,
     )
 
 
 def main() -> None:
     connector = StaticListConnector(name="demo", headlines=SAMPLE_HEADLINES)
     pipeline = _build_pipeline()
+    app_config = load_app_config()
 
-    results = pipeline.consume(connector.stream(), open_positions=0, spread_points=20)
+    results = pipeline.consume(
+        connector.stream(),
+        open_positions=0,
+        spread_points=app_config.pipeline.max_spread_points,
+    )
     for result in results:
         pprint(result)
 
 
 async def main_async() -> None:
+    app_config = load_app_config()
     pipeline = _build_pipeline()
     connector = AsyncStaticListConnector(name="demo-async", headlines=SAMPLE_HEADLINES, delay_ms=1)
-    runner = ProductionRunner(pipeline=pipeline, connectors=[connector], queue_size=128)
-    stats = await runner.run(open_positions=0, spread_points=20)
+    runner = ProductionRunner(
+        pipeline=pipeline,
+        connectors=[connector],
+        queue_size=app_config.runtime.queue_size,
+    )
+    stats = await runner.run(open_positions=0, spread_points=app_config.pipeline.max_spread_points)
     pprint({"runner_stats": stats})
 
 

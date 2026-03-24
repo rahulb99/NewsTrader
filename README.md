@@ -15,7 +15,7 @@ This project is intentionally an MVP skeleton. It gives you the full runtime sha
 - [User guide](#user-guide)
   - [Run the demo](#run-the-demo)
   - [Run async production-style ingestion](#run-async-production-style-ingestion)
-  - [Use environment configuration](#use-environment-configuration)
+  - [Use TOML configuration](#use-toml-configuration)
   - [Run tests](#run-tests)
 - [Extending NewsTrader](#extending-newstrader)
 - [Current limitations](#current-limitations)
@@ -57,7 +57,7 @@ For asynchronous production-style ingestion, `ProductionRunner` fans in one or m
 - `newstrader.service`
   - `ProductionRunner` async runtime with backpressure tracking.
 - `newstrader.config`
-  - Optional environment-driven config helpers.
+  - TOML-driven config helpers (environment only selects config path and provides secrets).
 
 ## Data model
 
@@ -177,29 +177,38 @@ That path uses:
 - `ProductionRunner` with bounded queue
 - backpressure/throughput stats (`ingested`, `processed`, `dropped_on_backpressure`)
 
-### Use environment configuration
+### Use TOML configuration
 
-Configuration helpers are available in `newstrader.config`.
+Configuration helpers are available in `newstrader.config`. Runtime and strategy settings now live in `newstrader.toml` (checked into source control), while environment variables should be reserved for secrets and minimal runtime wiring.
 
-Pipeline config environment variables:
+Example `newstrader.toml`:
 
-- `NEWSTRADER_DEDUP_TTL_MINUTES` (default `120`)
-- `NEWSTRADER_MAX_OPEN_POSITIONS` (default `1`)
-- `NEWSTRADER_COOLDOWN_MINUTES` (default `10`)
-- `NEWSTRADER_MAX_SPREAD_POINTS` (default `45`)
+```toml
+[pipeline]
+dedup_ttl_minutes = 120
+max_open_positions = 1
+cooldown_minutes = 10
+max_spread_points = 45
+allowed_domains = ["financialjuice.com/news"]
 
-Runtime config environment variables:
+[runtime]
+queue_size = 1000
+processing_timeout_ms = 250
+min_confidence = 0.60
+```
 
-- `NEWSTRADER_QUEUE_SIZE` (default `1000`)
-- `NEWSTRADER_PROCESSING_TIMEOUT_MS` (default `250`)
-- `NEWSTRADER_MIN_CONFIDENCE` (default `0.60`)
+For testing with Financial Juice, keep `financialjuice.com/news` in `allowed_domains`, then emit events with URLs from that domain (for example `https://financialjuice.com/news`).
+
+Environment variable usage is now intentionally minimal:
+
+- `NEWSTRADER_CONFIG` (optional): path to config file (default `newstrader.toml`)
 
 Example:
 
 ```bash
-export NEWSTRADER_MAX_SPREAD_POINTS=35
-export NEWSTRADER_QUEUE_SIZE=2048
+export NEWSTRADER_CONFIG=./newstrader.toml
 newstrader-demo
+pytest -q
 ```
 
 ### Run tests
