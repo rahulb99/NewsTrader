@@ -108,6 +108,60 @@ The package includes a CLI entrypoint:
 newstrader-demo
 ```
 
+The demo runs both a synchronous and an asynchronous ingestion flow using static headlines.
+
+## TradingView indicator
+
+A Pine v5 indicator that mirrors the current rule-based signal policy is available at `tradingview/newstrader_xauusd_indicator.pine`. Integration notes are documented in `docs/tradingview_integration.md`.
+
+## LLM signal policy (OpenAI)
+
+The pipeline now supports an OpenAI-backed LLM policy in addition to the default rule policy.
+
+1. Create a `.env` file in the repo root:
+
+```bash
+OPENAI_API_KEY=sk-...
+NEWSTRADER_SIGNAL_POLICY=llm
+NEWSTRADER_OPENAI_MODEL=gpt-4.1-mini
+NEWSTRADER_OPENAI_TEMPERATURE=0.0
+```
+
+2. Run the demo as usual (`newstrader-demo`). When `NEWSTRADER_SIGNAL_POLICY=llm`, the pipeline builds `OpenAILLMPolicy`; otherwise it uses `RuleBasedXAUUSDPolicy`.
+
+### LLM prompt used
+
+System prompt:
+
+`You are a low-latency macro-news trading classifier for XAUUSD. Given one headline, return strict JSON only. Choose BUY, SELL, or NO_TRADE using the headline's likely immediate impact on gold. Do not include markdown or extra keys.`
+
+User prompt template:
+
+```
+Classify this headline event.
+
+source: {source}
+headline: {headline}
+source_timestamp_utc: {timestamp}
+
+Output JSON schema:
+{
+  "tradeable": boolean,
+  "reason": string,
+  "side": "BUY" | "SELL" | null,
+  "news_impact": "low" | "medium" | "high" | null,
+  "confidence": number,
+  "size": number | null,
+  "take_profit_pips": integer | null,
+  "stop_loss_pips": integer | null
+}
+
+Rules:
+- If uncertain or conflicting signal, set tradeable=false and side/news_impact/size/take_profit_pips/stop_loss_pips to null.
+- confidence must be between 0.0 and 1.0.
+- If tradeable=true, include side, impact, size, TP, SL.
+- Keep reason short snake_case.
+```
 This runs the synchronous demo flow (`newstrader.demo:main`) using a static list of sample headlines and prints pipeline results.
 
 ### Run async production-style ingestion

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
 from .models import HeadlineEvent, TradeSignal
 
@@ -45,6 +46,11 @@ class Decision:
     tradeable: bool
     reason: str
     signal: TradeSignal | None = None
+
+
+class SignalPolicy(Protocol):
+    def evaluate(self, event: HeadlineEvent) -> Decision:
+        ...  # pragma: no cover - interface only
 
 
 class RuleBasedXAUUSDPolicy:
