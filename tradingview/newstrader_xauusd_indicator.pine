@@ -38,7 +38,23 @@ countHits(string text, string[] tokens) =>
 clamp(float v, float lo, float hi) =>
     math.max(lo, math.min(hi, v))
 
-headlineClean = str.lower(str.trim(headlineInput))
+normalizeWhitespace(string text) =>
+    string trimmed = str.trim(text)
+    string result = ""
+    bool inWhitespace = false
+    int len = str.length(trimmed)
+    for i = 0 to len - 1
+        ch = str.char(trimmed, i)
+        bool isWhitespace = ch == " " or ch == "\n" or ch == "\t" or ch == "\r"
+        if isWhitespace
+            if not inWhitespace
+                result += " "
+                inWhitespace := true
+        else
+            result += ch
+            inWhitespace := false
+
+headlineClean = str.lower(normalizeWhitespace(headlineInput))
 buyHits = countHits(headlineClean, buyTokens)
 sellHits = countHits(headlineClean, sellTokens)
 impactHits = countHits(headlineClean, impactTokens)
