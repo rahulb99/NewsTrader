@@ -36,5 +36,14 @@ class RiskEngine:
         if self._last_trade_at and now - self._last_trade_at < self.cooldown:
             return RiskDecision(False, "cooldown_active")
 
-        self._last_trade_at = now
         return RiskDecision(True, "passed")
+
+    def record_trade(self, executed_at: datetime | None = None) -> None:
+        """
+        Record that a trade has been successfully executed.
+
+        If ``executed_at`` is not provided, the current UTC time is used.
+        """
+        if executed_at is None:
+            executed_at = datetime.now(timezone.utc)
+        self._last_trade_at = executed_at
