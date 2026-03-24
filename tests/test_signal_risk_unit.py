@@ -34,9 +34,8 @@ def test_rule_policy_returns_ambiguous_when_buy_sell_hits_are_equal():
 
 
 def test_risk_engine_blocks_on_cooldown_then_allows_after_window():
-    policy = RuleBasedXAUUSDPolicy()
-    signal = policy.evaluate(_event("Fed dovish surprise points to cuts")).signal
-    assert signal is not None
+    # Use a minimal non-None dummy signal so this test only exercises RiskEngine behavior
+    signal = object()
 
     engine = RiskEngine(max_open_positions=1, cooldown_minutes=10, max_spread_points=50)
     now = datetime.now(timezone.utc)
