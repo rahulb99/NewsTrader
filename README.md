@@ -10,9 +10,23 @@ This repository contains an MVP skeleton for a low-latency headline-to-trade sys
 - Use deterministic/rule-based logic in the hot path first.
 - Keep an auditable record of all decisions.
 
+## How news ingestion works (current MVP)
+
+1. A connector implements `SourceConnector.stream()` and yields normalized `HeadlineEvent` objects.
+2. The demo uses `StaticListConnector` to simulate what a persistent browser/websocket listener would emit.
+3. `NewsTradingPipeline.consume()` reads each event from the connector stream and routes it through:
+   - exact dedup (`ExactDedupCache`)
+   - signal policy (`RuleBasedXAUUSDPolicy`)
+   - risk engine (`RiskEngine`)
+   - executor (`DryRunExecutor` for now)
+4. Each decision is written to `audit.jsonl` via `JsonlAuditLogger`.
+
+In production, replace `StaticListConnector` with Playwright/Puppeteer connectors that keep pages open, observe DOM/XHR/websocket updates, and emit new headlines as events.
+
 ## Implemented in this scaffold
 
 - Canonical event and signal models.
+- Source connector interface + demo connector.
 - In-memory exact dedup cache with TTL.
 - Rule-based XAUUSD signal policy.
 - Risk guardrails (spread threshold, cooldown, max open positions).

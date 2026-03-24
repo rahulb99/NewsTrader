@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from newstrader.audit import JsonlAuditLogger
 from newstrader.dedup import ExactDedupCache
 from newstrader.executor import DryRunExecutor
+from newstrader.ingestion import StaticListConnector
 from newstrader.models import HeadlineEvent
 from newstrader.pipeline import NewsTradingPipeline
 from newstrader.risk import RiskEngine
@@ -48,3 +49,19 @@ def test_hawkish_event_generates_sell_or_block(tmp_path):
     assert result["status"] in {"sent", "blocked"}
     if result["status"] == "sent":
         assert result["signal"]["side"] == "SELL"
+
+
+def test_connector_stream_consumed_by_pipeline(tmp_path):
+    p = build_pipeline(tmp_path)
+    connector = StaticListConnector(
+        name="demo",
+        headlines=[
+            "Fed surprise dovish pivot signals potential cuts",
+            "Fed surprise dovish pivot signals potential cuts",
+        ],
+    )
+
+    results = p.consume(connector.stream(), open_positions=0, spread_points=10)
+
+    assert len(results) == 2
+    assert results[1]["status"] == "dropped"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import asdict
 
 from .audit import JsonlAuditLogger
@@ -24,6 +25,15 @@ class NewsTradingPipeline:
         self.risk = risk
         self.executor = executor
         self.audit = audit
+
+
+
+    def consume(self, events: Iterable[HeadlineEvent], *, open_positions: int, spread_points: int) -> list[dict]:
+        """Process a batch/stream chunk of already-normalized events."""
+        results: list[dict] = []
+        for event in events:
+            results.append(self.process(event, open_positions=open_positions, spread_points=spread_points))
+        return results
 
     def process(self, event: HeadlineEvent, *, open_positions: int, spread_points: int) -> dict:
         dedup = self.dedup.check_and_add(event)
