@@ -1,6 +1,6 @@
 """NewsTrader package."""
 
-from .ingestion import SourceConnector
+from .ingestion import AsyncSourceConnector, SourceConnector
 from .models import HeadlineEvent, TradeSignal
 
-__all__ = ["SourceConnector", "HeadlineEvent", "TradeSignal"]
+__all__ = ["SourceConnector", "AsyncSourceConnector", "HeadlineEvent", "TradeSignal"]

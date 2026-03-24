@@ -3,10 +3,11 @@ from datetime import datetime, timezone
 from newstrader.audit import JsonlAuditLogger
 from newstrader.dedup import ExactDedupCache
 from newstrader.executor import DryRunExecutor
-from newstrader.ingestion import StaticListConnector
+from newstrader.ingestion import AsyncStaticListConnector, StaticListConnector
 from newstrader.models import HeadlineEvent
 from newstrader.pipeline import NewsTradingPipeline
 from newstrader.risk import RiskEngine
+from newstrader.service import ProductionRunner
 from newstrader.signal import RuleBasedXAUUSDPolicy
 
 
@@ -65,3 +66,17 @@ def test_connector_stream_consumed_by_pipeline(tmp_path):
 
     assert len(results) == 2
     assert results[1]["status"] == "dropped"
+
+
+def test_async_runner_processes_events(tmp_path):
+    import asyncio
+
+    p = build_pipeline(tmp_path)
+    connector = AsyncStaticListConnector(name="async", headlines=["dovish fed cuts"], delay_ms=0)
+    runner = ProductionRunner(pipeline=p, connectors=[connector], queue_size=16)
+
+    stats = asyncio.run(runner.run(open_positions=0, spread_points=10))
+
+    assert stats.ingested == 1
+    assert stats.processed == 1
+    assert stats.dropped_on_backpressure == 0

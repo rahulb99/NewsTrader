@@ -1,37 +1,40 @@
 # NewsTrader MVP Skeleton
 
-This repository contains an MVP skeleton for a low-latency headline-to-trade system focused on **XAUUSD**.
+This repository now includes a **production-oriented runtime scaffold** for a low-latency headline-to-trade system focused on **XAUUSD**.
 
-## Design goals
+## Architecture
 
-- Keep MT5 as an execution endpoint (outside scraping/model logic).
-- Use event-driven connectors for headline ingestion.
-- Deduplicate before signal generation.
-- Use deterministic/rule-based logic in the hot path first.
-- Keep an auditable record of all decisions.
+- **Ingestion**: connector interface (sync + async) emits normalized `HeadlineEvent` records.
+- **Pipeline**: dedup → signal policy → risk checks → execution.
+- **Execution**: adapter pattern (dry-run now, MT5 adapter next).
+- **Auditability**: every event outcome gets persisted to JSONL.
+- **Runtime**: bounded queue + backpressure metrics via async `ProductionRunner`.
 
-## How news ingestion works (current MVP)
+## How news ingestion works
 
-1. A connector implements `SourceConnector.stream()` and yields normalized `HeadlineEvent` objects.
-2. The demo uses `StaticListConnector` to simulate what a persistent browser/websocket listener would emit.
-3. `NewsTradingPipeline.consume()` reads each event from the connector stream and routes it through:
-   - exact dedup (`ExactDedupCache`)
-   - signal policy (`RuleBasedXAUUSDPolicy`)
-   - risk engine (`RiskEngine`)
-   - executor (`DryRunExecutor` for now)
-4. Each decision is written to `audit.jsonl` via `JsonlAuditLogger`.
+1. A source connector yields normalized events (`HeadlineEvent`).
+2. Production connectors should keep persistent browser/websocket sessions and emit only new updates.
+3. The `ProductionRunner` ingests from one or more async connectors into a bounded queue.
+4. A deterministic consumer drains the queue and calls `NewsTradingPipeline.process()` in order.
+5. Pipeline emits one of: `dropped`, `no_trade`, `blocked`, `sent`, and logs the record.
 
-In production, replace `StaticListConnector` with Playwright/Puppeteer connectors that keep pages open, observe DOM/XHR/websocket updates, and emit new headlines as events.
+## What is production-ready now
 
-## Implemented in this scaffold
+- Connector contracts for both sync and async sources.
+- Bounded queue ingestion runner with backpressure counters.
+- Deterministic ordered processing path.
+- Risk and dedup protections in the hot path.
+- Unit tests for duplicate suppression, direction inference, and connector ingestion.
 
-- Canonical event and signal models.
-- Source connector interface + demo connector.
-- In-memory exact dedup cache with TTL.
-- Rule-based XAUUSD signal policy.
-- Risk guardrails (spread threshold, cooldown, max open positions).
-- MT5 execution adapter interface and a dry-run executor.
-- Pipeline orchestration and JSONL audit logger.
+## What still needs provider integration
+
+To implement real low-latency connectors for LiveSquawk/FinancialJuice/ForexFactory we need one of:
+
+- Playwright/Puppeteer authenticated session details (or existing scripts/selectors).
+- Any internal API/websocket endpoint details you already have.
+- Credentials/token bootstrap method (if login-gated).
+
+Once you provide that, the placeholder `PlaywrightConnector` can be replaced with production code.
 
 ## Quickstart
 
@@ -42,11 +45,4 @@ pip install -e .
 newstrader-demo
 ```
 
-The demo emits sample headlines and prints resulting decisions/trades (dry-run only).
-
-## Next steps
-
-1. Add a real source connector (Playwright).
-2. Replace in-memory dedup with Redis + vector store.
-3. Add a lightweight classifier.
-4. Swap dry-run executor with MetaTrader5 executor.
+The demo runs both a synchronous and an asynchronous ingestion flow using static headlines.
