@@ -40,9 +40,20 @@ Rules:
 """
 
 
-class LLMResponseClient(Protocol):
-    def responses(self):  # pragma: no cover - protocol shape only
+class LLMResponsesAPI(Protocol):
+    def create(
+        self,
+        *,
+        model: str,
+        temperature: float,
+        input: list[dict[str, Any]],
+        response_format: dict[str, Any],
+    ) -> Any:  # pragma: no cover - protocol shape only
         ...
+
+
+class LLMResponseClient(Protocol):
+    responses: LLMResponsesAPI  # pragma: no cover - protocol shape only
 
 
 @dataclass(slots=True)
@@ -50,7 +61,7 @@ class OpenAILLMPolicy:
     api_key: str
     model: str = "gpt-4.1-mini"
     temperature: float = 0.0
-    client: Any | None = None
+    client: LLMResponseClient | None = None
 
     def __post_init__(self) -> None:
         if self.client is None:
