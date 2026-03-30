@@ -71,9 +71,24 @@ class RuntimeConfig:
 
 
 @dataclass(slots=True)
+class XAPIConfig:
+    tracked_users: list[str] = field(default_factory=list)
+    poll_interval_seconds: int = 30
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "XAPIConfig":
+        users = [u for u in data.get("tracked_users", []) if isinstance(u, str)]
+        return cls(
+            tracked_users=users,
+            poll_interval_seconds=int(data.get("poll_interval_seconds", 30)),
+        )
+
+
+@dataclass(slots=True)
 class AppConfig:
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
+    x_api: XAPIConfig = field(default_factory=XAPIConfig)
 
     @classmethod
     def from_toml(cls, path: str | Path) -> "AppConfig":
@@ -81,6 +96,7 @@ class AppConfig:
         return cls(
             pipeline=PipelineConfig.from_dict(parsed.get("pipeline", {})),
             runtime=RuntimeConfig.from_dict(parsed.get("runtime", {})),
+            x_api=XAPIConfig.from_dict(parsed.get("x_api", {})),
         )
 
 

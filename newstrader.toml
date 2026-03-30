@@ -3,9 +3,13 @@ dedup_ttl_minutes = 120
 max_open_positions = 1
 cooldown_minutes = 10
 max_spread_points = 45
-allowed_domains = ["financialjuice.com/news"]
+allowed_domains = ["x.com"]
 
 [runtime]
 queue_size = 1000
 processing_timeout_ms = 250
 min_confidence = 0.60
+
+[x_api]
+tracked_users = ["zaborhedge", "FirstSquawk", "DeItaone"]
+poll_interval_seconds = 30

@@ -1,9 +1,7 @@
-# NewsTrader MVP Skeleton
+# NewsTrader
 
 NewsTrader is a **Python 3.11+ event-driven headline-to-trade pipeline** focused on **XAUUSD**.
-It is designed as a production-oriented scaffold: clear interfaces, deterministic processing, and auditable outcomes.
-
-This project is intentionally an MVP skeleton. It gives you the full runtime shape (ingestion → decisioning → execution) while leaving provider-specific integrations (live news feeds, brokerage adapters) pluggable.
+It ingests posts from X (Twitter) accounts, runs them through a signal policy, validates against risk rules, and executes trades (dry-run by default).
 
 ## Table of contents
 
@@ -14,8 +12,10 @@ This project is intentionally an MVP skeleton. It gives you the full runtime sha
 - [Installation](#installation)
 - [User guide](#user-guide)
   - [Run the demo](#run-the-demo)
-  - [Run async production-style ingestion](#run-async-production-style-ingestion)
-  - [Use TOML configuration](#use-toml-configuration)
+  - [X API ingestion](#x-api-ingestion)
+  - [LLM signal policy](#llm-signal-policy-openai)
+  - [TOML configuration](#use-toml-configuration)
+  - [TradingView indicator](#tradingview-indicator)
   - [Run tests](#run-tests)
 - [Extending NewsTrader](#extending-newstrader)
 - [Current limitations](#current-limitations)
@@ -25,8 +25,8 @@ This project is intentionally an MVP skeleton. It gives you the full runtime sha
 At runtime, the system processes each headline through a fixed, deterministic path:
 
 1. **Ingestion**
-   - A connector emits normalized `HeadlineEvent` objects.
-   - You can use synchronous connectors (`SourceConnector`) or asynchronous connectors (`AsyncSourceConnector`).
+   - `XAPIConnector` polls the X API v2 for posts by tracked users and emits normalized `HeadlineEvent` objects.
+   - Synchronous connectors (`SourceConnector`) are available for tests and demos.
 2. **Deduplication**
    - `ExactDedupCache` suppresses repeated headlines by hash within a TTL window.
 3. **Signal policy**
@@ -43,7 +43,7 @@ For asynchronous production-style ingestion, `ProductionRunner` fans in one or m
 ## Core components
 
 - `newstrader.ingestion`
-  - Connector interfaces and demo connectors (`StaticListConnector`, `AsyncStaticListConnector`, placeholder `PlaywrightConnector`).
+  - Connector interfaces, demo connectors (`StaticListConnector`, `AsyncStaticListConnector`), and production `XAPIConnector` for ingesting posts from X (Twitter).
 - `newstrader.pipeline`
   - `NewsTradingPipeline` orchestration and per-event processing.
 - `newstrader.signal`
@@ -110,15 +110,47 @@ newstrader-demo
 
 The demo runs both a synchronous and an asynchronous ingestion flow using static headlines.
 
-## TradingView indicator
+### X API ingestion
 
-A Pine v5 indicator that mirrors the current rule-based signal policy is available at `tradingview/newstrader_xauusd_indicator.pine`. Integration notes are documented in `docs/tradingview_integration.md`.
+For production use, `XAPIConnector` polls the X (Twitter) API v2 recent-search endpoint for posts by tracked users.
 
-## LLM signal policy (OpenAI)
+1. Add your bearer token to `.env`:
 
-The pipeline now supports an OpenAI-backed LLM policy in addition to the default rule policy.
+```bash
+NEWSTRADER_X_BEARER_TOKEN=AAAAAAAAAAAAAAAAAAAAAx...
+```
 
-1. Create a `.env` file in the repo root:
+2. Configure tracked accounts in `newstrader.toml`:
+
+```toml
+[x_api]
+tracked_users = ["zaborhedge", "FirstSquawk", "DeItaone"]
+poll_interval_seconds = 30
+```
+
+3. Wire `XAPIConnector` into `ProductionRunner`:
+
+```python
+from newstrader.ingestion import XAPIConnector
+from newstrader.service import ProductionRunner
+
+connector = XAPIConnector(
+    name="x-feed",
+    bearer_token=os.environ["NEWSTRADER_X_BEARER_TOKEN"],
+    tracked_users=app_config.x_api.tracked_users,
+    poll_interval_seconds=app_config.x_api.poll_interval_seconds,
+)
+runner = ProductionRunner(pipeline=pipeline, connectors=[connector])
+await runner.run(open_positions=0, spread_points=45)
+```
+
+The connector tracks `since_id` across polls so only new posts are fetched, and backs off automatically on rate limits (HTTP 429).
+
+### LLM signal policy (OpenAI)
+
+The pipeline supports an OpenAI-backed LLM policy in addition to the default rule-based policy.
+
+1. Add to your `.env`:
 
 ```bash
 OPENAI_API_KEY=sk-...
@@ -129,53 +161,9 @@ NEWSTRADER_OPENAI_TEMPERATURE=0.0
 
 2. Run the demo as usual (`newstrader-demo`). When `NEWSTRADER_SIGNAL_POLICY=llm`, the pipeline builds `OpenAILLMPolicy`; otherwise it uses `RuleBasedXAUUSDPolicy`.
 
-### LLM prompt used
+### TradingView indicator
 
-System prompt:
-
-`You are a low-latency macro-news trading classifier for XAUUSD. Given one headline, return strict JSON only. Choose BUY, SELL, or NO_TRADE using the headline's likely immediate impact on gold. Do not include markdown or extra keys.`
-
-User prompt template:
-
-```
-Classify this headline event.
-
-source: {source}
-headline: {headline}
-source_timestamp_utc: {timestamp}
-
-Output JSON schema:
-{
-  "tradeable": boolean,
-  "reason": string,
-  "side": "BUY" | "SELL" | null,
-  "news_impact": "low" | "medium" | "high" | null,
-  "confidence": number,
-  "size": number | null,
-  "take_profit_pips": integer | null,
-  "stop_loss_pips": integer | null
-}
-
-Rules:
-- If uncertain or conflicting signal, set tradeable=false and side/news_impact/size/take_profit_pips/stop_loss_pips to null.
-- confidence must be between 0.0 and 1.0.
-- If tradeable=true, include side, impact, size, TP, SL.
-- Keep reason short snake_case.
-```
-This runs the synchronous demo flow (`newstrader.demo:main`) using a static list of sample headlines and prints pipeline results.
-
-### Run async production-style ingestion
-
-`newstrader-demo` also includes an async run inside the module. If you want to run async-only manually:
-
-```bash
-python -c "import asyncio; from newstrader.demo import main_async; asyncio.run(main_async())"
-```
-
-That path uses:
-- `AsyncStaticListConnector`
-- `ProductionRunner` with bounded queue
-- backpressure/throughput stats (`ingested`, `processed`, `dropped_on_backpressure`)
+A Pine v5 indicator that mirrors the rule-based signal policy is available at `tradingview/newstrader_xauusd_indicator.pine`. Integration notes are in `docs/tradingview_integration.md`.
 
 ### Use TOML configuration
 
@@ -189,27 +177,28 @@ dedup_ttl_minutes = 120
 max_open_positions = 1
 cooldown_minutes = 10
 max_spread_points = 45
-allowed_domains = ["financialjuice.com/news"]
+allowed_domains = ["x.com"]
 
 [runtime]
 queue_size = 1000
 processing_timeout_ms = 250
 min_confidence = 0.60
+
+[x_api]
+tracked_users = ["zaborhedge", "FirstSquawk", "DeItaone"]
+poll_interval_seconds = 30
 ```
 
-For testing with Financial Juice, keep `financialjuice.com/news` in `allowed_domains`, then emit events with URLs from that domain (for example `https://financialjuice.com/news`).
+The `[x_api]` section configures which X (Twitter) accounts to monitor. The bearer token is provided via the `NEWSTRADER_X_BEARER_TOKEN` environment variable.
 
-Environment variable usage is now intentionally minimal:
+Environment variables are reserved for secrets and minimal runtime wiring:
 
-- `NEWSTRADER_CONFIG` (optional): path to config file (default `newstrader.toml`)
-
-Example:
-
-```bash
-export NEWSTRADER_CONFIG=./newstrader.toml
-newstrader-demo
-pytest -q
-```
+| Variable | Purpose |
+|---|---|
+| `NEWSTRADER_CONFIG` | Path to config file (default `newstrader.toml`) |
+| `NEWSTRADER_X_BEARER_TOKEN` | X API v2 bearer token |
+| `OPENAI_API_KEY` | OpenAI key (only when using LLM policy) |
+| `NEWSTRADER_SIGNAL_POLICY` | `rule` (default) or `llm` |
 
 ### Run tests
 
@@ -219,9 +208,9 @@ pytest -q
 
 ## Extending NewsTrader
 
-### 1) Implement a real connector
+### 1) Add more source connectors
 
-Subclass `AsyncSourceConnector` and emit normalized `HeadlineEvent` objects from your provider feed (browser session, websocket, or API).
+Subclass `AsyncSourceConnector` and emit `HeadlineEvent` objects from any provider (websocket feed, RSS, etc.). Wire them into `ProductionRunner` alongside `XAPIConnector`.
 
 ### 2) Replace dry-run execution
 
@@ -239,10 +228,7 @@ Current dedup is in-memory; production distributed deployments should move dedup
 ## Current limitations
 
 - Strategy is intentionally rule-based and simplistic.
-- No live provider implementation is included in this repo.
+- X API connector requires a bearer token with recent-search access.
 - No real broker execution adapter is included (dry-run only).
 - Dedup cache is in-memory only.
 
----
-
-If you want, the next step can be adding a concrete `PlaywrightConnector` implementation template and a production `MT5ExecutionAdapter` contract with retry/error taxonomy.

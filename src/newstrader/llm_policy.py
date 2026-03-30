@@ -100,7 +100,10 @@ class OpenAILLMPolicy:
         )
 
         raw = self._extract_response_text(response)
-        payload = json.loads(raw)
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return Decision(tradeable=False, reason="llm_invalid_json", signal=None)
 
         tradeable_raw = payload.get("tradeable", False)
         if isinstance(tradeable_raw, bool):
@@ -109,16 +112,11 @@ class OpenAILLMPolicy:
             normalized = tradeable_raw.strip().lower()
             if normalized in ("true", "1", "yes"):
                 tradeable = True
-            elif normalized in ("false", "0", "no"):
-                tradeable = False
             else:
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError:
-            # Malformed JSON from LLM – fall back to a safe no-trade decision.
-            return Decision(tradeable=False, reason="llm_invalid_json", signal=None)
+                tradeable = False
+        else:
+            tradeable = bool(tradeable_raw)
 
-        tradeable = bool(payload.get("tradeable", False))
         reason_value = payload.get("reason", "llm_unknown")
         reason = str(reason_value) if reason_value is not None else "llm_unknown"
 

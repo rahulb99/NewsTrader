@@ -88,13 +88,13 @@ def test_async_runner_processes_events(tmp_path):
     assert stats.dropped_on_backpressure == 0
 
 
-def test_financialjuice_domain_allowed(tmp_path):
-    p = build_pipeline(tmp_path, allowed_domains={"financialjuice.com"})
+def test_x_domain_allowed(tmp_path):
+    p = build_pipeline(tmp_path, allowed_domains={"x.com"})
     ev = HeadlineEvent(
-        source="financialjuice",
+        source="x:zaborhedge",
         headline="Fed surprise dovish pivot signals potential cuts",
         timestamp_source=datetime.now(timezone.utc),
-        url="https://financialjuice.com/news",
+        url="https://x.com/zaborhedge/status/123456",
     )
 
     result = p.process(ev, open_positions=0, spread_points=10)
@@ -103,7 +103,7 @@ def test_financialjuice_domain_allowed(tmp_path):
 
 
 def test_non_allowlisted_domain_dropped(tmp_path):
-    p = build_pipeline(tmp_path, allowed_domains={"financialjuice.com"})
+    p = build_pipeline(tmp_path, allowed_domains={"x.com"})
     ev = HeadlineEvent(
         source="other",
         headline="Fed surprise dovish pivot signals potential cuts",
@@ -126,7 +126,7 @@ dedup_ttl_minutes = 90
 max_open_positions = 2
 cooldown_minutes = 5
 max_spread_points = 30
-allowed_domains = ["financialjuice.com/news", "https://www.reuters.com/world"]
+allowed_domains = ["x.com", "https://www.reuters.com/world"]
 
 [runtime]
 queue_size = 250
@@ -143,7 +143,7 @@ min_confidence = 0.7
         max_open_positions=2,
         cooldown_minutes=5,
         max_spread_points=30,
-        allowed_domains={"financialjuice.com", "reuters.com"},
+        allowed_domains={"x.com", "reuters.com"},
     )
     assert app.runtime == RuntimeConfig(queue_size=250, processing_timeout_ms=400, min_confidence=0.7)
 
@@ -153,7 +153,7 @@ def test_load_app_config_uses_newstrader_config_env_path(tmp_path):
     config_path.write_text(
         """
 [pipeline]
-allowed_domains = ["financialjuice.com/news"]
+allowed_domains = ["x.com"]
 """.strip(),
         encoding="utf-8",
     )
@@ -168,4 +168,4 @@ allowed_domains = ["financialjuice.com/news"]
         else:
             os.environ["NEWSTRADER_CONFIG"] = previous
 
-    assert app.pipeline.allowed_domains == {"financialjuice.com"}
+    assert app.pipeline.allowed_domains == {"x.com"}
